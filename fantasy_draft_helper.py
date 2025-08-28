@@ -28,6 +28,11 @@ Notes
 -----
 • K and DST are ignored in projection math by default to keep things simple; you can still keep a tab open for late‑round K/DST.
 • This is intentionally compact. If you want a model upgrade, add injury priors, target share projections, and schedule adjustments.
+
+(tier-system is not working right)
+- Important note - algorithm must factor in much more than j exp points... or avg points last season... need to normalize to position
+    - for ex. I shouldn't see Lamar as a possible next best pick if in early round even w high PPG - hes a qb but the avg qb is also scoring a decent amount
+    - value of replacement idea -> lamar isnt THAT much better than say a baker...
 """
 
 from __future__ import annotations
