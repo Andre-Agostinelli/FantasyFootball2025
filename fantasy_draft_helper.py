@@ -113,7 +113,7 @@ def simple_projection(season_summ: pd.DataFrame, cfg: Config) -> pd.DataFrame:
     last = df[df["season"] == cfg.seasons_end][["player_id", "ppg"]].rename(columns={"ppg": "ppg_last"})
     prev = df[df["season"] == (cfg.seasons_end - 1)][["player_id", "ppg"]].rename(columns={"ppg": "ppg_prev"})
     out = pd.merge(last, prev, on="player_id", how="left")
-    out["ppg_prev"].fillna(out["ppg_last"] * 0.85, inplace=True)
+    out["ppg_prev"] = out["ppg_prev"].fillna(out["ppg_last"] * 0.85)
     out["ppg_proj"] = 0.7 * out["ppg_last"] + 0.3 * out["ppg_prev"]
     out["pts_proj"] = out["ppg_proj"] * cfg.expect_games
     return out
@@ -214,6 +214,21 @@ def build_cheatsheet(cfg: Config, out_csv: str) -> pd.DataFrame:
         if c not in board.columns:
             board[c] = np.nan
     board = board[cols]
+        # --- ADP Integration ---
+    if "adp" not in out.columns:
+        # TODO: replace with actual ADP import
+        # Example: stub values or merge from a CSV
+        out["adp"] = 100  # default fallback
+
+    # Normalize ADP so lower = better
+    out["adp_norm"] = 1 - (out["adp"] / out["adp"].max())
+
+    # Blend into score
+    out["score"] = (
+        (out["ppg"] * 0.6) +     # projections
+        (out["VOR"] * 0.25) +    # value over replacement
+        (out["adp_norm"] * 0.15) # market anchor
+    )
     board.to_csv(out_csv, index=False)
     return board
 
@@ -231,7 +246,21 @@ def roster_need_weights(team_counts: Dict[str, int]) -> Dict[str, float]:
 def recommend(cheatsheet_csv: str, team_counts_str: str, drafted_str: str = "", top_k: int = 10) -> pd.DataFrame:
     board = pd.read_csv(cheatsheet_csv)
     drafted = set([s.strip().lower() for s in drafted_str.split(",") if s.strip()])
+    
     board = board[~board["player"].str.lower().isin(drafted)]
+
+    def adjust_for_adp(df, pick, picks_per_round=12):
+        next_pick = pick + picks_per_round
+        
+        # Risk flag: likely gone before your next pick
+        df["risk_gone"] = (df["adp"] < next_pick).astype(int)
+        
+        # Adjusted score: slight bump for guys at risk
+        df["score_adj"] = df["score"] + (0.2 * df["risk_gone"])
+        
+        return df.sort_values("score_adj", ascending=False)
+    
+    board = adjust_for_adp(board, pick=ns.pick)
 
     counts = {p: 0 for p in ["QB", "RB", "WR", "TE"]}
     if team_counts_str:
